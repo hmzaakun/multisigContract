@@ -14,7 +14,7 @@ contract MultisigTest is Test {
         wallet = new WalletMultisig(signer1, signer2);
     }
 
-    function testInitialSetup() public {
+    function testInitialSetup() public view {
         assertEq(
             wallet.isSigner(address(this)),
             true,
@@ -55,13 +55,7 @@ contract MultisigTest is Test {
         vm.prank(signer1);
         wallet.confirmTransaction(0);
 
-        (
-            address to,
-            uint256 value,
-            ,
-            bool executed,
-            uint256 confirmations
-        ) = wallet.transactions(0);
+        (, , , bool executed, uint256 confirmations) = wallet.transactions(0);
         assertEq(confirmations, 1, "Transaction should have 1 confirmation");
         assertEq(executed, false, "Transaction should not be executed yet");
     }
@@ -73,13 +67,7 @@ contract MultisigTest is Test {
         vm.prank(signer1);
         wallet.revokeConfirmation(0);
 
-        (
-            address to,
-            uint256 value,
-            ,
-            bool executed,
-            uint256 confirmations
-        ) = wallet.transactions(0);
+        (, , , bool executed, uint256 confirmations) = wallet.transactions(0);
         assertEq(
             confirmations,
             0,
@@ -89,7 +77,7 @@ contract MultisigTest is Test {
     }
 
     function testExecuteTransaction() public {
-        vm.deal(address(wallet), 1 ether); // Ajoute 1 ether au contrat
+        vm.deal(address(wallet), 1 ether); // Fund the wallet
         wallet.submitTransaction(address(0x111), 1 ether, "");
         vm.prank(signer1);
         wallet.confirmTransaction(0);
@@ -113,7 +101,7 @@ contract MultisigTest is Test {
     }
 
     function testRemoveSigner() public {
-        wallet.addSigner(address(0xABC)); // Ajoute un nouveau signataire pour maintenir 3 signataires minimum après suppression
+        wallet.addSigner(address(0xABC)); // Add a new signer to maintain 3 signers
         wallet.removeSigner(signer2);
 
         assertEq(wallet.isSigner(signer2), false, "Signer2 should be removed");
@@ -124,17 +112,81 @@ contract MultisigTest is Test {
         );
     }
 
-    function testFailAddDuplicateSigner() public {
-        wallet.addSigner(signer1); // Should fail since signer1 is already a signer
+    function testSubmitTransactionWithZeroValue() public {
+        wallet.submitTransaction(address(0x111), 0 ether, "");
+        (, uint256 value, , , ) = wallet.transactions(0);
+
+        assertEq(value, 0 ether, "Transaction value should be zero");
     }
 
-    function testFailRemoveBelowThreshold() public {
+    function test_RevertWhen_AddDuplicateSigner() public {
+        vm.expectRevert("Already a signer");
+        wallet.addSigner(signer1);
+    }
+
+    function test_RevertWhen_AddInvalidSigner() public {
+        vm.expectRevert("Invalid address");
+        wallet.addSigner(address(0));
+    }
+
+    function test_RevertWhen_RemoveNonSigner() public {
+        vm.expectRevert("Not a signer");
+        wallet.removeSigner(nonSigner);
+    }
+
+    function test_RevertWhen_RemoveBelowThreshold() public {
+        wallet.addSigner(address(0xABC));
+        wallet.removeSigner(signer2);
+
+        vm.expectRevert("Cannot have less than 3 signers");
         wallet.removeSigner(signer1);
-        wallet.removeSigner(signer2); // Should fail since it will reduce signers below 3
     }
 
-    function testFailNonSignerActions() public {
-        vm.prank(nonSigner);
-        wallet.submitTransaction(address(0x111), 1 ether, ""); // Should fail
+    function test_RevertWhen_TransactionDoesNotExist() public {
+        vm.expectRevert("Transaction does not exist");
+        wallet.confirmTransaction(999);
+    }
+
+    function test_RevertWhen_TransactionAlreadyConfirmed() public {
+        wallet.submitTransaction(address(0x111), 1 ether, "");
+        vm.prank(signer1);
+        wallet.confirmTransaction(0);
+
+        vm.prank(signer1);
+        vm.expectRevert("Transaction already confirmed");
+        wallet.confirmTransaction(0);
+    }
+
+    function test_RevertWhen_ExecuteWithoutEnoughConfirmations() public {
+        wallet.submitTransaction(address(0x111), 1 ether, "");
+        vm.prank(signer1);
+        wallet.confirmTransaction(0);
+
+        vm.expectRevert("Not enough confirmations");
+        wallet.executeTransaction(0);
+    }
+
+    function test_RevertWhen_TransactionAlreadyExecuted() public {
+        vm.deal(address(wallet), 1 ether);
+        wallet.submitTransaction(address(0x111), 1 ether, "");
+        vm.prank(signer1);
+        wallet.confirmTransaction(0);
+        vm.prank(signer2);
+        wallet.confirmTransaction(0);
+        wallet.executeTransaction(0);
+
+        vm.expectRevert("Transaction already executed");
+        wallet.executeTransaction(0);
+    }
+
+    function test_RevertWhen_TransactionFails() public {
+        wallet.submitTransaction(address(0x111), 1 ether, ""); // Insufficient funds
+        vm.prank(signer1);
+        wallet.confirmTransaction(0);
+        vm.prank(signer2);
+        wallet.confirmTransaction(0);
+
+        vm.expectRevert("Transaction failed");
+        wallet.executeTransaction(0);
     }
 }
