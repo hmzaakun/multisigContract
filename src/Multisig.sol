@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
+
 import {console} from "forge-std/console.sol";
 
 /// @title Multisignature Wallet
@@ -83,10 +84,7 @@ contract WalletMultisig {
     /// @notice Ensures a transaction has not already been confirmed by the caller.
     /// @param txId ID of the transaction.
     modifier notConfirmed(uint256 txId) {
-        require(
-            !confirmations[txId][msg.sender],
-            "Transaction already confirmed"
-        );
+        require(!confirmations[txId][msg.sender], "Transaction already confirmed");
         _;
     }
 
@@ -94,10 +92,7 @@ contract WalletMultisig {
     /// @param signer1 Address of the first signer.
     /// @param signer2 Address of the second signer.
     constructor(address signer1, address signer2) {
-        require(
-            signer1 != address(0) && signer2 != address(0),
-            "Invalid signer address"
-        );
+        require(signer1 != address(0) && signer2 != address(0), "Invalid signer address");
         require(signer1 != signer2, "Signers must be distinct");
 
         signers.push(msg.sender);
@@ -123,29 +118,15 @@ contract WalletMultisig {
     /// @param _to Address of the recipient.
     /// @param _value Amount of Ether to transfer.
     /// @param _data Transaction data (e.g., function call).
-    function submitTransaction(
-        address _to,
-        uint256 _value,
-        bytes memory _data
-    ) public onlySigner {
-        transactions.push(
-            Transaction({
-                to: _to,
-                value: _value,
-                data: _data,
-                executed: false,
-                confirmations: 0
-            })
-        );
+    function submitTransaction(address _to, uint256 _value, bytes memory _data) public onlySigner {
+        transactions.push(Transaction({to: _to, value: _value, data: _data, executed: false, confirmations: 0}));
 
         emit TransactionSubmitted(transactions.length - 1, msg.sender);
     }
 
     /// @notice Confirms a transaction.
     /// @param txId ID of the transaction to confirm.
-    function confirmTransaction(
-        uint256 txId
-    ) public onlySigner txExists(txId) notExecuted(txId) notConfirmed(txId) {
+    function confirmTransaction(uint256 txId) public onlySigner txExists(txId) notExecuted(txId) notConfirmed(txId) {
         confirmations[txId][msg.sender] = true;
         transactions[txId].confirmations += 1;
 
@@ -154,9 +135,7 @@ contract WalletMultisig {
 
     /// @notice Revokes a confirmation for a transaction.
     /// @param txId ID of the transaction to revoke confirmation for.
-    function revokeConfirmation(
-        uint256 txId
-    ) public onlySigner txExists(txId) notExecuted(txId) {
+    function revokeConfirmation(uint256 txId) public onlySigner txExists(txId) notExecuted(txId) {
         require(confirmations[txId][msg.sender], "Transaction not confirmed");
 
         confirmations[txId][msg.sender] = false;
@@ -167,19 +146,12 @@ contract WalletMultisig {
 
     /// @notice Executes a transaction once it has enough confirmations.
     /// @param txId ID of the transaction to execute.
-    function executeTransaction(
-        uint256 txId
-    ) public onlySigner txExists(txId) notExecuted(txId) {
+    function executeTransaction(uint256 txId) public onlySigner txExists(txId) notExecuted(txId) {
         Transaction storage transaction = transactions[txId];
-        require(
-            transaction.confirmations >= requiredConfirmations,
-            "Not enough confirmations"
-        );
+        require(transaction.confirmations >= requiredConfirmations, "Not enough confirmations");
 
         transaction.executed = true;
-        (bool success, ) = transaction.to.call{value: transaction.value}(
-            transaction.data
-        );
+        (bool success,) = transaction.to.call{value: transaction.value}(transaction.data);
         require(success, "Transaction failed");
 
         emit TransactionExecuted(txId);
